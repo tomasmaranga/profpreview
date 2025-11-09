@@ -19,6 +19,13 @@
       "js": ["content.js"],
       "css": ["index.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://siscs.it.tufts.edu/psc/csprd/EMPLOYEE/PSFT_SA/c/*"],
+      "js": ["content.js"],
+      "css": ["index.css"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "action": {

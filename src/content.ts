@@ -54,7 +54,7 @@ async function parseAndFetchTeachers(
   schoolId: string
 ): Promise<Teacher[]> {
   const parted = fullName
-    .split(",")
+    .split(/,|\/|&| and /i)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -105,14 +105,33 @@ function parseFirstLast(subName: string): {
   firstName: string;
   lastName: string;
 } {
-  const tokens = subName.split(" ").filter(Boolean);
+  const clean = subName
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const tokens = clean.split(" ").filter(Boolean);
   if (tokens.length === 1) {
-    return { firstName: tokens[0], lastName: "" };
+    return { firstName: "", lastName: tokens[0] };
   }
-  return {
-    firstName: tokens[0],
-    lastName: tokens[tokens.length - 1],
-  };
+
+  const first = tokens[0];
+  const last = tokens[tokens.length - 1];
+
+  if (/^[A-Za-z]\.?$/.test(first)) {
+    return { firstName: "", lastName: last };
+  }
+
+  if (/^(dr\.?|prof\.?)$/i.test(first)) {
+    const nextFirst = tokens[1] || "";
+    const maybeLast = tokens[tokens.length - 1] || "";
+    if (/^[A-Za-z]\.?$/.test(nextFirst)) {
+      return { firstName: "", lastName: maybeLast };
+    }
+    return { firstName: nextFirst, lastName: maybeLast };
+  }
+
+  return { firstName: first, lastName: last };
 }
 
 function attachPopupHoverLogic(professorDiv: HTMLElement, popup: HTMLElement) {
@@ -350,9 +369,17 @@ function runExtensionScript() {
     if (data.extensionEnabled === false) {
       return;
     }
-    if (window.location.hash.includes("search_results")) {
+
+    const isSearchResults = window.location.hash.includes("search_results");
+    const isCart = isCartPage();
+
+    if (isSearchResults) {
       monitorForNewProfessorElements();
-    } else {
+    }
+
+    if (isCart) {
+      monitorForNewProfessorElements();
+      monitorCartFacultyElements();
     }
   });
 }
@@ -397,4 +424,63 @@ function attachToggleUniversityClick(
       showPopup(professorDiv, mainTeacher, hoveredName, "all", selection);
     });
   });
+}
+
+function isCartPage(): boolean {
+  const href = window.location.href;
+  return /SSR_SSENRL_CART/i.test(href) || /#cart/i.test(window.location.hash);
+}
+
+function unique<T extends Element>(arr: T[]): T[] {
+  return Array.from(new Set(arr));
+}
+
+function selectCartProfessorElements(
+  root: Document | HTMLElement = document
+): HTMLElement[] {
+  const hits: HTMLElement[] = [];
+
+  root.querySelectorAll<HTMLElement>(".tfp-ins, div.tfp-ins").forEach((el) => {
+    if (el.textContent && /\w/.test(el.textContent)) hits.push(el);
+  });
+
+  const tables = Array.from(root.querySelectorAll("table"));
+  tables.forEach((table) => {
+    const headerRow =
+      table.querySelector("thead tr") || table.querySelector("tbody tr");
+    if (!headerRow) return;
+
+    const headers = Array.from(headerRow.querySelectorAll("th"));
+    const facultyIdx = headers.findIndex((th) =>
+      /faculty/i.test(th.textContent || "")
+    );
+    if (facultyIdx === -1) return;
+
+    const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+    bodyRows.forEach((tr) => {
+      const tds = Array.from(tr.querySelectorAll("td"));
+      const cell = tds[facultyIdx];
+      if (!cell) return;
+
+      const txt = cell.textContent?.trim() || "";
+      if (
+        /[A-Za-z]\.\s*[A-Za-z]/.test(txt) ||
+        /,/.test(txt) ||
+        /\sand\s/i.test(txt)
+      ) {
+        hits.push(cell as HTMLElement);
+      }
+    });
+  });
+
+  return unique(hits);
+}
+
+function monitorCartFacultyElements() {
+  selectCartProfessorElements().forEach((el) => processProfessorElement(el));
+
+  const observer = new MutationObserver((_mutations) => {
+    selectCartProfessorElements().forEach((el) => processProfessorElement(el));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
