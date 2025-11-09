@@ -2,6 +2,19 @@ import { renderPopup, PopupData, Teacher } from "./popupRenderer";
 
 const observedElements = new Set<HTMLElement>();
 
+function getTopZIndex(): number {
+  let max = 0;
+  for (const el of Array.from(document.querySelectorAll("body *"))) {
+    const z = parseInt(getComputedStyle(el).zIndex || "0", 10);
+    if (!Number.isNaN(z)) max = Math.max(max, z);
+  }
+  return Math.max(max, 10050);
+}
+
+function elevatePopup(popup: HTMLElement) {
+  popup.style.zIndex = String(getTopZIndex() + 10);
+}
+
 function createPopup() {
   const popup = document.createElement("div");
   popup.id = "rmp-popup";
@@ -10,6 +23,8 @@ function createPopup() {
   popup.style.display = "none";
   popup.style.position = "absolute";
   popup.style.pointerEvents = "auto";
+
+  elevatePopup(popup);
 
   document.body.appendChild(popup);
   return popup;
@@ -34,6 +49,8 @@ async function showPopup(
   popup.style.transform = `scale(${scaleFactor})`;
   popup.style.top = `${rect.bottom + window.scrollY}px`;
   popup.style.left = `${rect.left + window.scrollX}px`;
+
+  elevatePopup(popup);
   popup.style.display = "block";
 
   attachPopupHoverLogic(target, popup);
@@ -351,35 +368,63 @@ function mergeTeacherArrays(a: Teacher[], b: Teacher[]): Teacher[] {
   return Array.from(map.values());
 }
 
+let genericObserverStarted = false;
+
 function monitorForNewProfessorElements() {
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
-        const profs = document.querySelectorAll("div.tfp-ins");
-        profs.forEach((el) => processProfessorElement(el as HTMLElement));
-      }
-    }
+  if (genericObserverStarted) return;
+  genericObserverStarted = true;
+
+  document.querySelectorAll<HTMLElement>(".tfp-ins").forEach((el) => {
+    processProfessorElement(el);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
+  const observer = new MutationObserver((_mutations) => {
+    document.querySelectorAll<HTMLElement>(".tfp-ins").forEach((el) => {
+      processProfessorElement(el);
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
 }
+
+function startWhen(selector: string, starter: () => void) {
+  if (document.querySelector(selector)) return starter();
+  const obs = new MutationObserver(() => {
+    if (document.querySelector(selector)) {
+      obs.disconnect();
+      starter();
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+}
+
+startWhen(
+  "#TFP_calendar_layout, #tfp_calendar_wrapper, #TFP_calendar_qvw",
+  monitorCalendarFacultyElements
+);
+startWhen("#TFP_cart_section, .tfp-qcart", monitorCartFacultyElements);
 
 function runExtensionScript() {
   chrome.storage.local.get("extensionEnabled", (data) => {
-    if (data.extensionEnabled === false) {
-      return;
-    }
+    if (data.extensionEnabled === false) return;
 
-    const isSearchResults = window.location.hash.includes("search_results");
+    monitorForNewProfessorElements();
+
     const isCart = isCartPage();
-
-    if (isSearchResults) {
-      monitorForNewProfessorElements();
-    }
+    const isCalendar = isCalendarPage();
 
     if (isCart) {
       monitorForNewProfessorElements();
       monitorCartFacultyElements();
+    }
+
+    if (isCalendar) {
+      monitorCalendarFacultyElements();
     }
   });
 }
@@ -429,6 +474,14 @@ function attachToggleUniversityClick(
 function isCartPage(): boolean {
   const href = window.location.href;
   return /SSR_SSENRL_CART/i.test(href) || /#cart/i.test(window.location.hash);
+}
+
+function isCalendarPage(): boolean {
+  return !!(
+    document.getElementById("TFP_calendar_layout") ||
+    document.getElementById("tfp_calendar_wrapper") ||
+    document.getElementById("TFP_calendar_qvw")
+  );
 }
 
 function unique<T extends Element>(arr: T[]): T[] {
@@ -481,6 +534,40 @@ function monitorCartFacultyElements() {
 
   const observer = new MutationObserver((_mutations) => {
     selectCartProfessorElements().forEach((el) => processProfessorElement(el));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function selectCalendarProfessorElements(
+  root: Document | HTMLElement = document
+): HTMLElement[] {
+  const nodes = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      [
+        "#TFP_ClsSrch_dialog .tfp-ins",
+        ".tfp-results-sections .tfp-ins",
+        ".tfp-meet-location .tfp-ins",
+      ].join(", ")
+    )
+  );
+
+  const clean = nodes.filter((el) => {
+    const txt = (el.textContent || "").trim();
+    return txt.length > 0 && txt.toUpperCase() !== "STAFF";
+  });
+
+  return unique(clean);
+}
+
+function monitorCalendarFacultyElements() {
+  selectCalendarProfessorElements().forEach((el) =>
+    processProfessorElement(el)
+  );
+
+  const observer = new MutationObserver((_mutations) => {
+    selectCalendarProfessorElements().forEach((el) =>
+      processProfessorElement(el)
+    );
   });
   observer.observe(document.body, { childList: true, subtree: true });
 }
