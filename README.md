@@ -21,7 +21,7 @@ To install the extension:
 
 ## Usage
 
-1. Navigate to Tufts' SIS search results page.
+1. Navigate to Tufts' SIS search results page or your enrollment cart.
 2. Hover over a professor's name to view their RMP stats in a popup.
 3. Use the extension popup menu to:
    - Enable/disable the extension.
@@ -29,13 +29,14 @@ To install the extension:
 
 ## File Structure
 
+- `public/`
+  - **`manifest.json`**: Chrome extension configuration file.
 - `src/`
   - **`background.ts`**: Handles background tasks and RMP API requests.
   - **`content.ts`**: Injected into the SIS page to add hover functionality.
   - **`popupRenderer.ts`**: Generates the HTML for the hover popup.
   - **`App.tsx`**: Handles the extension's popup menu UI.
-- `dist/`: Contains the final build files for the extension.
-- `manifest.json`: Chrome extension configuration file.
+  - **`main.tsx`** - Boots the popup UI.
 
 ## Feedback
 
