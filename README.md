@@ -1,4 +1,4 @@
-# Rate My Professors Chrome Extension
+# ProfPreview: Rate My Professors Chrome Extension for Tufts SIS
 
 This Chrome extension helps Tufts students easily access their professors' Rate My Professors statistics directly on SIS. It provides quick access to professor ratings, tags, and other helpful information directly from the SIS website.
 
